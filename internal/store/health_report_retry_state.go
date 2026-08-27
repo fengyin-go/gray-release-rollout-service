@@ -1,7 +1,5 @@
 package store
 
-import "errors"
-
 type RetryFailure struct {
 	Temporary bool
 	Message   string
@@ -27,7 +25,9 @@ func (s *HealthReportRetryRetryState) Next() error {
 		s.steps = s.steps[1:]
 	}
 	if err != nil {
-		return errors.New(err.Error())
+		// 直接返回原始错误，保留 *RetryFailure 的错误类别（Temporary），
+		// 避免用 errors.New(err.Error()) 重新包装后丢失类型信息。
+		return err
 	}
 	s.commits++
 	return nil

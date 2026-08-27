@@ -11,8 +11,12 @@ func NewHealthReportRetryFlow(state *store.HealthReportRetryRetryState) *HealthR
 }
 
 func (f *HealthReportRetryFlow) Execute() error {
-	var last error
-	for attempt := 0; attempt < 2; attempt++ {
+	last := f.state.Next()
+	if last == nil {
+		return nil
+	}
+	// 只让临时错误再试一次；不可重试的错误立即返回，并保留原始错误类别。
+	if rf, ok := last.(*store.RetryFailure); ok && rf.Temporary {
 		last = f.state.Next()
 		if last == nil {
 			return nil
