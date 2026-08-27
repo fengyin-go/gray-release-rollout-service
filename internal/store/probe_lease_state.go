@@ -27,10 +27,12 @@ func (s *ProbeLeaseLeaseState) Release(key string, token uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_ = token
+	// Delete rather than zero: Acquire keys on map existence, so leaving a
+	// sentinel keeps the instance permanently busy.
 	if _, ok := s.active[key]; !ok {
 		return false
 	}
-	s.active[key] = 0
+	delete(s.active, key)
 	return true
 }
 

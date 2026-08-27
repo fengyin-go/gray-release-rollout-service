@@ -17,9 +17,12 @@ func (f *ProbeLeaseFlow) Process(key string, fail bool) error {
 	if !ok {
 		return errors.New("lease busy")
 	}
+	// Release on every post-acquire return path, including the error branch.
+	// Otherwise a failed probe leaves the lease held and the same instance can
+	// never be probed again.
+	defer f.state.Release(key, token)
 	if fail {
 		return errors.New("operation failed")
 	}
-	defer f.state.Release(key, token)
 	return nil
 }
