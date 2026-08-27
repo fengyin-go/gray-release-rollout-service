@@ -18,7 +18,8 @@ func (s *ServiceReconcileLeaseState) Acquire(key string) (uint64, bool) {
 	if _, exists := s.active[key]; exists {
 		return 0, false
 	}
-	token := uint64(1)
+	s.next++
+	token := s.next
 	s.active[key] = token
 	return token, true
 }
@@ -26,11 +27,11 @@ func (s *ServiceReconcileLeaseState) Acquire(key string) (uint64, bool) {
 func (s *ServiceReconcileLeaseState) Release(key string, token uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_ = token
-	if _, ok := s.active[key]; !ok {
+	cur, ok := s.active[key]
+	if !ok || cur != token {
 		return false
 	}
-	s.active[key] = 0
+	delete(s.active, key)
 	return true
 }
 
