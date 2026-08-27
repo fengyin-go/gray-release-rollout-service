@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>灰度发布控制台</title>
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --panel: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #7c3aed;
+      --accent-2: #4f46e5;
+      --good: #059669;
+      --warn: #d97706;
+      --border: #e5e7eb;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+    header { background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: #fff; padding: 20px 28px; }
+    header h1 { margin: 0; font-size: 20px; }
+    .stats { display: flex; gap: 14px; margin-top: 14px; }
+    .stat { background: rgba(255,255,255,.18); padding: 8px 18px; border-radius: 8px; }
+    .stat b { font-size: 20px; display: block; }
+    .stat span { font-size: 12px; opacity: .85; }
+    .wrap { display: grid; grid-template-columns: 300px 1fr; gap: 18px; padding: 20px 28px; }
+    .card { background: var(--panel); border-radius: 10px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+    .card h2 { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+    tr { cursor: pointer; }
+    tr:hover { background: #f9fafb; }
+    .pill { padding: 2px 8px; border-radius: 12px; font-size: 11px; background: #eef2ff; color: var(--accent-2); }
+    button { padding: 8px 14px; border: none; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+    input, select { width: 100%; padding: 8px; margin-bottom: 8px; border-radius: 6px; border: 1px solid var(--border); }
+    .bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin: 6px 0; }
+    .bar > div { height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+    #log { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🚀 灰度发布控制台</h1>
+    <div class="stats" id="stats"></div>
+  </header>
+  <div class="wrap">
+    <div>
+      <div class="card">
+        <h2>创建版本</h2>
+        <input id="v-svc" placeholder="服务 ID">
+        <input id="v-ver" placeholder="版本号，如 2.0.0">
+        <input id="v-url" placeholder="制品地址">
+        <button onclick="createVersion()">创建版本</button>
+      </div>
+      <div class="card">
+        <h2>创建发布单</h2>
+        <input id="r-name" placeholder="发布单名称">
+        <select id="r-svc"></select>
+        <select id="r-ver"></select>
+        <input id="r-by" placeholder="创建人">
+        <button onclick="createRelease()">创建发布单</button>
+      </div>
+      <div class="card">
+        <h2>操作日志</h2>
+        <div id="log">就绪。</div>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <h2>发布单列表</h2>
+        <table id="rel-table">
+          <thead><tr><th>名称</th><th>状态</th><th>进度</th><th>创建人</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h2 id="detail-title">发布详情</h2>
+        <div id="detail">点击左侧发布单查看详情。</div>
+      </div>
+    </div>
+  </div>
+  <script>
+    async function api(path, opts) {
+      const res = await fetch(path, opts);
+      const j = await res.json();
+      if (j.code !== 0) { log('错误: ' + j.message); return null; }
+      return j.data;
+    }
+    function log(msg) { document.getElementById('log').textContent = new Date().toLocaleTimeString() + ' ' + msg; }
+
+    async function loadStats() {
+      const s = await api('/api/stats/releases');
+      if (!s) return;
+      document.getElementById('stats').innerHTML =
+        `<div class="stat"><b>${s.total}</b><span>发布单</span></div>` +
+        `<div class="stat"><b>${s.total_versions}</b><span>版本</span></div>` +
+        `<div class="stat"><b>${s.total_rules}</b><span>流量规则</span></div>`;
+    }
+
+    async function loadReleases() {
+      const page = await api('/api/releases?size=100');
+      if (!page) return;
+      const rows = page.items || [];
+      document.querySelector('#rel-table tbody').innerHTML = rows.map(r =>
+        `<tr onclick="selectRelease('${r.id}')">
+          <td>${r.name}</td><td><span class="pill">${r.status}</span></td>
+          <td><div class="bar"><div style="width:0%"></div></div></td><td>${r.created_by || '-'}</td>
+        </tr>`).join('');
+    }
+
+    async function loadVersions() {
+      const vs = await api('/api/versions');
+      if (!vs) return;
+      const svcSet = [...new Set(vs.map(v => v.service_id))];
+      document.getElementById('r-svc').innerHTML = svcSet.map(s => `<option value="${s}">${s}</option>`).join('');
+      renderVersions();
+      document.getElementById('r-svc').onchange = renderVersions;
+    }
+
+    function renderVersions() {
+      const svc = document.getElementById('r-svc').value;
+      fetch('/api/versions?service_id=' + svc).then(r => r.json()).then(j => {
+        const vs = j.data || [];
+        document.getElementById('r-ver').innerHTML = vs.map(v =>
+          `<option value="${v.id}">${v.version}</option>`).join('');
+      });
+    }
+
+    async function selectRelease(id) {
+      const page = await api('/api/releases/' + id + '/overview');
+      const steps = await api('/api/releases/' + id + '/steps');
+      if (!page) return;
+      document.getElementById('detail-title').textContent = '发布详情（' + page.release.name + '）';
+      const stepRows = (steps || []).map(st =>
+        `<tr><td>${st.step_no}. ${st.name}</td><td>${st.target_percent}%</td>
+         <td><span class="pill">${st.status}</span></td></tr>`).join('');
+      document.getElementById('detail').innerHTML =
+        `<p>状态：<span class="pill">${page.release.status}</span>　进度：${page.progress}%</p>
+         <div class="bar"><div style="width:${page.progress}%"></div></div>
+         <p>步骤 ${page.done_steps}/${page.total_steps} · 白名单 ${page.whitelist} · 规则 ${page.rules}</p>
+         <table><thead><tr><th>步骤</th><th>目标</th><th>状态</th></tr></thead><tbody>${stepRows}</tbody></table>`;
+    }
+
+    async function createVersion() {
+      const service_id = document.getElementById('v-svc').value.trim();
+      const version = document.getElementById('v-ver').value.trim();
+      const artifact_url = document.getElementById('v-url').value.trim();
+      if (!service_id || !version || !artifact_url) { log('请填写完整版本信息'); return; }
+      const v = await api('/api/versions', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ service_id, version, artifact_url }) });
+      if (v) { log('版本已创建: ' + v.version); loadVersions(); loadStats(); }
+    }
+
+    async function createRelease() {
+      const name = document.getElementById('r-name').value.trim();
+      const service_id = document.getElementById('r-svc').value;
+      const version_id = document.getElementById('r-ver').value;
+      const created_by = document.getElementById('r-by').value.trim();
+      if (!name || !version_id) { log('请填写发布单信息'); return; }
+      const r = await api('/api/releases', { method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ name, service_id, version_id, created_by }) });
+      if (r) { log('发布单已创建: ' + r.name); loadReleases(); loadStats(); }
+    }
+
+    loadStats();
+    loadReleases();
+    loadVersions();
+  </script>
+</body>
+</html>
