@@ -1,6 +1,10 @@
 package service
 
-import "grayrelease/internal/store"
+import (
+	"errors"
+
+	"grayrelease/internal/store"
+)
 
 type EventPublishRetryFlow struct {
 	state *store.EventPublishRetryRetryState
@@ -16,6 +20,10 @@ func (f *EventPublishRetryFlow) Execute() error {
 		last = f.state.Next()
 		if last == nil {
 			return nil
+		}
+		var failure *store.RetryFailure
+		if errors.As(last, &failure) && !failure.Temporary {
+			return last
 		}
 	}
 	return last

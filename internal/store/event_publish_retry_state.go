@@ -1,7 +1,5 @@
 package store
 
-import "errors"
-
 type RetryFailure struct {
 	Temporary bool
 	Message   string
@@ -27,7 +25,7 @@ func (s *EventPublishRetryRetryState) Next() error {
 		s.steps = s.steps[1:]
 	}
 	if err != nil {
-		return errors.New(err.Error())
+		return err
 	}
 	s.commits++
 	return nil
