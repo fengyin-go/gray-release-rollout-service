@@ -26,11 +26,15 @@ func (s *DependencyRebuildLeaseState) Acquire(key string) (uint64, bool) {
 func (s *DependencyRebuildLeaseState) Release(key string, token uint64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_ = token
-	if _, ok := s.active[key]; !ok {
+	cur, ok := s.active[key]
+	if !ok {
 		return false
 	}
-	s.active[key] = 0
+	// 只有持有当前 token 的调用者才能释放，避免误清理后续重建获取的新租约。
+	if token != 0 && cur != token {
+		return false
+	}
+	delete(s.active, key)
 	return true
 }
 
