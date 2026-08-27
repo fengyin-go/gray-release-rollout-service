@@ -9,6 +9,16 @@ type RetryFailure struct {
 
 func (e *RetryFailure) Error() string { return e.Message }
 
+// IsTemporaryRetryFailure 报告 err 是否为可重试的临时错误。
+// 非 *RetryFailure 错误一律视为永久失败，不可重试。
+func IsTemporaryRetryFailure(err error) bool {
+	var rf *RetryFailure
+	if errors.As(err, &rf) {
+		return rf.Temporary
+	}
+	return false
+}
+
 type InstanceRegisterRetryRetryState struct {
 	steps    []error
 	attempts int
@@ -27,7 +37,9 @@ func (s *InstanceRegisterRetryRetryState) Next() error {
 		s.steps = s.steps[1:]
 	}
 	if err != nil {
-		return errors.New(err.Error())
+		// 保留原始错误类型，使调用方能够通过 Temporary 区分
+		// 永久拒绝（不可重试）与临时错误（允许重试）。
+		return err
 	}
 	s.commits++
 	return nil
