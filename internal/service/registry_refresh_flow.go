@@ -19,9 +19,12 @@ func (f *RegistryRefreshFlow) Process(key string, fail bool) error {
 	if !ok {
 		return errors.New("lease busy")
 	}
+	// Register the release before any failure path: a failed refresh must
+	// still give up the occupation marker, otherwise a same-key restart is
+	// blocked by the stale lease.
+	defer f.state.Release(key, token)
 	if fail {
 		return errors.New("operation failed")
 	}
-	defer f.state.Release(key, token)
 	return nil
 }
