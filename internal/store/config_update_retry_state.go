@@ -27,10 +27,25 @@ func (s *ConfigUpdateRetryRetryState) Next() error {
 		s.steps = s.steps[1:]
 	}
 	if err != nil {
-		return errors.New(err.Error())
+		// 返回原始错误，保留 *RetryFailure 类型，
+		// 以便上层根据 Temporary 区分可重试与不可恢复。
+		return err
 	}
 	s.commits++
 	return nil
+}
+
+// IsRetryable 报告错误是否为可重试的临时占用。
+// 永久拒绝（Temporary=false 或非 *RetryFailure）不可重试，须原样返回。
+func IsRetryable(err error) bool {
+	if err == nil {
+		return false
+	}
+	var f *RetryFailure
+	if !errors.As(err, &f) {
+		return false
+	}
+	return f.Temporary
 }
 
 func (s *ConfigUpdateRetryRetryState) Attempts() int { return s.attempts }
